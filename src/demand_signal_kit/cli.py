@@ -1,0 +1,145 @@
+import click
+import polars as pl
+from pathlib import Path
+from demand_signal_kit.config import PipelineConfig, DataConfig, FeatureConfig, TrainingConfig
+from demand_signal_kit.data.loader import load_data
+from demand_signal_kit.data.sample_generator import generate_sample_data
+from demand_signal_kit.data.splitter import train_test_split, future_dates
+from demand_signal_kit.features.pipeline import build_features
+from demand_signal_kit.models.registry import get_model, list_models
+from demand_signal_kit.evaluation.metrics import compare_models
+
+NUMERIC_TYPES = {pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
+                 pl.Float32, pl.Float64}
+
+
+def get_numeric_feature_cols(df: pl.DataFrame, exclude: tuple[str, ...] = ()) -> list[str]:
+    return [c for c in df.columns if c not in exclude and df[c].dtype in NUMERIC_TYPES]
+
+
+@click.group()
+@click.version_option(version="0.1.0")
+def cli():
+    """Mimo Forecasting - Demand forecasting toolkit."""
+
+
+@cli.command()
+@click.option("--source", type=click.Choice(["csv", "parquet", "postgres"]), required=True)
+@click.option("--path", "source_path", required=True)
+@click.option("--date-col", default="date")
+@click.option("--product-col", default="product_id")
+@click.option("--target-col", default="quantity")
+def ingest(source, source_path, date_col, product_col, target_col):
+    """Load and validate data from a source."""
+    config = DataConfig(
+        source_type=source,
+        source_path=source_path,
+        date_column=date_col,
+        product_column=product_col,
+        target_column=target_col,
+    )
+    df = load_data(config)
+    click.echo(f"Loaded {len(df)} rows, {df.shape[1]} columns")
+    click.echo(f"Products: {df[product_col].n_unique()}")
+    click.echo(f"Date range: {df[date_col].min()} to {df[date_col].max()}")
+
+
+@cli.command()
+@click.option("--source", type=click.Choice(["csv", "parquet", "postgres"]), required=True)
+@click.option("--path", "source_path", required=True)
+@click.option("--model", "-m", multiple=True, default=["lightgbm"])
+@click.option("--horizon", type=int, default=14)
+@click.option("--test-size", type=float, default=0.2)
+def train(source, source_path, model, horizon, test_size):
+    """Train models and save evaluation."""
+    config = DataConfig(source_type=source, source_path=source_path)
+    df = load_data(config)
+    feat_config = FeatureConfig()
+    df = build_features(df, feat_config)
+    train_df, test_df = train_test_split(df, test_size=test_size)
+
+    feature_cols = get_numeric_feature_cols(df, exclude=("date", "product_id", "quantity"))
+    results = {}
+
+    for m in model:
+        click.echo(f"Training {m}...")
+        forecaster = get_model(m)()
+        forecaster.fit(train_df, "date", "quantity", "product_id", feature_cols)
+        preds = forecaster.predict(test_df, "date", "product_id", feature_cols)
+        merged = test_df.select(["date", "product_id", "quantity"]).join(
+            preds, on=["date", "product_id"]
+        )
+        results[m] = merged
+
+    comparison = compare_models(results)
+    click.echo("\nModel Comparison:")
+    click.echo(comparison)
+
+
+@cli.command()
+@click.option("--source", type=click.Choice(["csv", "parquet", "postgres"]), required=True)
+@click.option("--path", "source_path", required=True)
+@click.option("--model", "-m", multiple=True, default=["lightgbm"])
+@click.option("--horizon", type=int, default=14)
+@click.option("--output", type=click.Path(), default="forecast_output.csv")
+def predict(source, source_path, model, horizon, output):
+    """Generate forecasts for future dates."""
+    config = DataConfig(source_type=source, source_path=source_path)
+    df = load_data(config)
+    feat_config = FeatureConfig()
+    df = build_features(df, feat_config)
+
+    last_date = df["date"].max().isoformat()
+    products = df["product_id"].unique().to_list()
+    future = future_dates(last_date, horizon, products)
+    future = build_features(pl.concat([df, future]), feat_config).filter(
+        pl.col("date") > last_date
+    )
+
+    feature_cols = get_numeric_feature_cols(future, exclude=("date", "product_id", "quantity"))
+
+    for m in model:
+        click.echo(f"Predicting with {m}...")
+        forecaster = get_model(m)()
+        forecaster.fit(df, "date", "quantity", "product_id", feature_cols)
+        preds = forecaster.predict(future, "date", "product_id", feature_cols)
+        preds.write_csv(output)
+        click.echo(f"Saved to {output}")
+
+
+@cli.command()
+def demo():
+    """Run full pipeline with sample data."""
+    click.echo("Generating sample data...")
+    df = generate_sample_data()
+    click.echo(f"Generated {len(df)} rows")
+
+    feat_config = FeatureConfig()
+    df = build_features(df, feat_config)
+    train_df, test_df = train_test_split(df)
+
+    feature_cols = get_numeric_feature_cols(df, exclude=("date", "product_id", "quantity"))
+
+    click.echo("\nTraining LightGBM...")
+    model = get_model("lightgbm")()
+    model.fit(train_df, "date", "quantity", "product_id", feature_cols)
+    preds = model.predict(test_df, "date", "product_id", feature_cols)
+    merged = test_df.select(["date", "product_id", "quantity"]).join(
+        preds, on=["date", "product_id"]
+    )
+
+    from demand_signal_kit.evaluation.metrics import evaluate_forecast
+    metrics = evaluate_forecast(merged["quantity"], merged["forecast"])
+    click.echo("\nEvaluation Metrics:")
+    for k, v in metrics.items():
+        click.echo(f"  {k}: {v:.2f}")
+
+    click.echo("\nPipeline complete!")
+
+
+@cli.command()
+def models():
+    """List available models."""
+    click.echo("Available models:")
+    for m in list_models():
+        click.echo(f"  - {m}")
