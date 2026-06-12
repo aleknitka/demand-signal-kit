@@ -8,6 +8,7 @@ from demand_signal_kit.data.synthetic.stores import generate_stores
 from demand_signal_kit.data.synthetic.products import generate_products
 from demand_signal_kit.data.synthetic.promos import generate_promos
 from demand_signal_kit.data.synthetic.receipts import generate_receipts
+from demand_signal_kit.data.synthetic.customers import generate_customers
 from demand_signal_kit.data.synthetic.compatibility import (
     to_forecast_frame,
     flatten_to_daily_demand,
@@ -20,6 +21,7 @@ class SyntheticData:
     stores: pl.DataFrame
     products: pl.DataFrame
     promos: pl.DataFrame
+    customers: pl.DataFrame
     receipts: pl.DataFrame
     receipt_items: pl.DataFrame
 
@@ -33,9 +35,10 @@ class SyntheticDataGenerator:
     def generate(self) -> SyntheticData:
         stores = generate_stores(self.config, self.rng)
         products = generate_products(self.config, self.rng)
+        customers = generate_customers(self.config, self.rng)
         promos = generate_promos(self.config, products, stores, self.rng)
         receipts, receipt_items, promo_spend = generate_receipts(
-            self.config, stores, products, promos, self.rng
+            self.config, stores, products, promos, self.rng, customers
         )
 
         promos = promos.join(
@@ -48,6 +51,7 @@ class SyntheticDataGenerator:
             stores=stores,
             products=products,
             promos=promos,
+            customers=customers,
             receipts=receipts,
             receipt_items=receipt_items,
         )
@@ -80,6 +84,7 @@ class SyntheticDataGenerator:
         self.data.stores.write_parquet(output_dir / "stores.parquet")
         self.data.products.write_parquet(output_dir / "products.parquet")
         self.data.promos.write_parquet(output_dir / "promos.parquet")
+        self.data.customers.write_parquet(output_dir / "customers.parquet")
         self.data.receipts.write_parquet(output_dir / "receipts.parquet")
         self.data.receipt_items.write_parquet(output_dir / "receipt_items.parquet")
 
@@ -95,6 +100,7 @@ class SyntheticDataGenerator:
         self.data.stores.write_csv(output_dir / "stores.csv")
         self.data.products.write_csv(output_dir / "products.csv")
         self.data.promos.write_csv(output_dir / "promos.csv")
+        self.data.customers.write_csv(output_dir / "customers.csv")
         self.data.receipts.write_csv(output_dir / "receipts.csv")
         self.data.receipt_items.write_csv(output_dir / "receipt_items.csv")
 
@@ -109,9 +115,13 @@ class SyntheticDataGenerator:
             "stores": len(d.stores),
             "products": len(d.products),
             "promos": len(d.promos),
+            "customers": len(d.customers),
             "receipts": len(d.receipts),
             "receipt_items": len(d.receipt_items),
             "date_range": f"{self.config.date_start} → {self.config.date_end}",
             "total_revenue": round(d.receipts["total"].sum(), 2),
             "avg_basket_size": round(d.receipts["items_count"].mean(), 1),
+            "loyalty_enrollment": round(
+                d.customers["loyalty_enrolled"].mean() * 100, 1
+            ),
         }

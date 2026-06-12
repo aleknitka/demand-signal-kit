@@ -31,6 +31,16 @@ class SyntheticDataConfig:
         "Sports & Outdoors": 0.20,
     })
 
+    n_customers: int = 50000
+    loyalty_enrollment_rate: float = 0.6
+    customer_segment_weights: dict[str, float] = field(default_factory=lambda: {
+        "budget": 0.25,
+        "regular": 0.35,
+        "premium": 0.20,
+        "vip": 0.10,
+        "inactive": 0.10,
+    })
+
 
 STORE_TYPE_SIZE_PROFILES = {
     ("Grocery", "Express"): {"sqft": (5000, 12000), "traffic": (800, 1500)},
