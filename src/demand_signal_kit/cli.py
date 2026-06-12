@@ -143,3 +143,56 @@ def models():
     click.echo("Available models:")
     for m in list_models():
         click.echo(f"  - {m}")
+
+
+@cli.command()
+@click.option("--stores", type=int, default=10, help="Number of stores")
+@click.option("--products", type=int, default=100, help="Number of products")
+@click.option("--start-date", type=str, default="2022-01-01", help="Start date (YYYY-MM-DD)")
+@click.option("--end-date", type=str, default="2024-12-31", help="End date (YYYY-MM-DD)")
+@click.option("--seed", type=int, default=42, help="Random seed")
+@click.option("--format", "output_format", type=click.Choice(["parquet", "csv"]), default="parquet")
+@click.option("--output", type=click.Path(), default="data/synthetic", help="Output directory")
+@click.option("--flat", is_flag=True, help="Also generate flat forecast-ready file")
+def generate(stores, products, start_date, end_date, seed, output_format, output, flat):
+    """Generate synthetic sales data with stores, products, promos, and receipts."""
+    from datetime import date as date_type
+    from demand_signal_kit.data.synthetic import SyntheticDataGenerator, SyntheticDataConfig
+
+    config = SyntheticDataConfig(
+        n_stores=stores,
+        n_products=products,
+        date_start=date_type.fromisoformat(start_date),
+        date_end=date_type.fromisoformat(end_date),
+        seed=seed,
+        output_format=output_format,
+    )
+
+    click.echo(f"Generating synthetic data: {stores} stores, {products} products...")
+    gen = SyntheticDataGenerator(config)
+    gen.generate()
+
+    if output_format == "parquet":
+        out = gen.write_parquet(output)
+    else:
+        out = gen.write_csv(output)
+
+    summary = gen.summary()
+    click.echo(f"\nGenerated in {out}/")
+    click.echo(f"  Stores:          {summary['stores']}")
+    click.echo(f"  Products:        {summary['products']}")
+    click.echo(f"  Promos:          {summary['promos']}")
+    click.echo(f"  Receipts:        {summary['receipts']:,}")
+    click.echo(f"  Receipt items:   {summary['receipt_items']:,}")
+    click.echo(f"  Date range:      {summary['date_range']}")
+    click.echo(f"  Total revenue:   ${summary['total_revenue']:,.2f}")
+    click.echo(f"  Avg basket size: {summary['avg_basket_size']} items")
+
+    if flat:
+        forecast = gen.to_forecast_frame()
+        flat_path = out / f"forecast_input.{output_format}"
+        if output_format == "parquet":
+            forecast.write_parquet(flat_path)
+        else:
+            forecast.write_csv(flat_path)
+        click.echo(f"\nFlat forecast file: {flat_path} ({len(forecast):,} rows)")
