@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 from demand_signal_kit.data.synthetic.causal.choice_model import MNLChoiceModel, ChoiceResult
 from demand_signal_kit.data.synthetic.causal.parameters import ParameterStore, DEFAULT_ATTRIBUTE_NAMES
+from demand_signal_kit.data.synthetic.missions.selector import MissionSelector
 from demand_signal_kit.data.synthetic.config import CATEGORY_PROFILES, US_HOLIDAYS_2022_2024
 
 
@@ -16,6 +17,7 @@ class ScenarioResult:
     total_demand: dict[str, float]
     revenue: dict[str, float]
     parameters: dict
+    mission_distribution: dict[str, float] | None = None
     elasticity_matrix: pl.DataFrame | None = None
 
 
@@ -24,7 +26,8 @@ class CausalDemandSimulator:
 
     Combines:
     - MNL discrete choice model for product selection
-    - Agent-based simulation with customer segments
+    - Multi-dimensional customer segmentation with ontology
+    - Shopping mission selection (weekly stockup, quick topup, etc.)
     - Parameter store with adjustable knobs
     - Scenario comparison engine
     """
@@ -34,12 +37,14 @@ class CausalDemandSimulator:
         products: pl.DataFrame,
         customers: pl.DataFrame | None = None,
         params: ParameterStore | None = None,
+        mission_selector: MissionSelector | None = None,
         n_agents: int = 10000,
         seed: int = 42,
     ):
         self.products = products
         self.customers = customers
         self.params = params or ParameterStore()
+        self.mission_selector = mission_selector or MissionSelector()
         self.n_agents = n_agents
         self._rng = np.random.default_rng(seed)
         self.choice_model = MNLChoiceModel()

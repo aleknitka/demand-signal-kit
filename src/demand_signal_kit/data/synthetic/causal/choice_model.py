@@ -75,10 +75,11 @@ class MNLChoiceModel:
         segment_shares = {}
         seg_accumulators = {}
         for i, agent in enumerate(agents):
-            seg = agent["segment"]
-            if seg not in seg_accumulators:
-                seg_accumulators[seg] = []
-            seg_accumulators[seg].append(probs[i])
+            dims = agent.get("segments", {})
+            primary = dims.get("affluence", dims.get("segment", "unknown"))
+            if primary not in seg_accumulators:
+                seg_accumulators[primary] = []
+            seg_accumulators[primary].append(probs[i])
 
         for seg_name, prob_list in seg_accumulators.items():
             segment_shares[seg_name] = np.array(prob_list).mean(axis=0)
