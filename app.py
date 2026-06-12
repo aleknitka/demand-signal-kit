@@ -295,9 +295,9 @@ with tab_features:
                     .drop(target_col)
                     .to_pandas()
                     .T
-                    .sort_values(by=target_col, ascending=False)
                 )
                 corrs.columns = ["correlation"]
+                corrs = corrs.sort_values(by="correlation", ascending=False)
                 fig = px.bar(
                     corrs.reset_index(),
                     x="index",
