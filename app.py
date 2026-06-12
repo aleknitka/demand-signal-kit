@@ -287,24 +287,27 @@ with tab_features:
             st.dataframe(stats.to_pandas(), use_container_width=True)
 
             st.subheader("Correlation with Target")
-            corrs = (
-                feature_df.select(feature_cols + [target_col])
-                .corr()
-                .tail(1)
-                .drop(target_col)
-                .to_pandas()
-                .T
-                .sort_values(by=target_col, ascending=False)
-            )
-            corrs.columns = ["correlation"]
-            fig = px.bar(
-                corrs.reset_index(),
-                x="index",
-                y="correlation",
-                title="Feature Correlation with Target",
-            )
-            fig.update_layout(height=400, xaxis_title="Feature", yaxis_title="Correlation")
-            st.plotly_chart(fig, use_container_width=True)
+            if target_col in feature_df.columns:
+                corrs = (
+                    feature_df.select(feature_cols + [target_col])
+                    .corr()
+                    .tail(1)
+                    .drop(target_col)
+                    .to_pandas()
+                    .T
+                    .sort_values(by=target_col, ascending=False)
+                )
+                corrs.columns = ["correlation"]
+                fig = px.bar(
+                    corrs.reset_index(),
+                    x="index",
+                    y="correlation",
+                    title="Feature Correlation with Target",
+                )
+                fig.update_layout(height=400, xaxis_title="Feature", yaxis_title="Correlation")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"Target column '{target_col}' not found in data.")
 
 # ── TAB: Train ─────────────────────────────────────────────────────────────────
 
