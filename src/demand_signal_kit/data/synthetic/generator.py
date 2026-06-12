@@ -32,15 +32,30 @@ class SyntheticDataGenerator:
         self.rng = np.random.default_rng(self.config.seed)
         self._data: SyntheticData | None = None
 
-    def generate(self) -> SyntheticData:
+    def generate(self, progress_callback=None) -> SyntheticData:
+        def _pct(step, total, label):
+            if progress_callback:
+                progress_callback(step / total, label)
+
+        steps = 6
+        _pct(0, steps, "Generating stores...")
         stores = generate_stores(self.config, self.rng)
+
+        _pct(1, steps, "Generating products...")
         products = generate_products(self.config, self.rng)
+
+        _pct(2, steps, "Generating customers...")
         customers = generate_customers(self.config, self.rng)
+
+        _pct(3, steps, "Generating promotions...")
         promos = generate_promos(self.config, products, stores, self.rng)
+
+        _pct(4, steps, "Generating receipts...")
         receipts, receipt_items, promo_spend = generate_receipts(
             self.config, stores, products, promos, self.rng, customers
         )
 
+        _pct(5, steps, "Joining promo spend...")
         promos = promos.join(
             promo_spend, on="promo_id", how="left"
         ).with_columns(

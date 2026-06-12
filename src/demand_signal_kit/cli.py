@@ -169,8 +169,22 @@ def generate(stores, products, start_date, end_date, seed, output_format, output
     )
 
     click.echo(f"Generating synthetic data: {stores} stores, {products} products...")
-    gen = SyntheticDataGenerator(config)
-    gen.generate()
+
+    try:
+        from tqdm import tqdm
+        pbar = tqdm(total=6, desc="Generating", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} {desc}")
+        def progress(pct, label):
+            step = int(pct * 6)
+            pbar.n = step
+            pbar.set_postfix_str(label, refresh=True)
+        gen = SyntheticDataGenerator(config)
+        gen.generate(progress_callback=progress)
+        pbar.n = 6
+        pbar.set_postfix_str("Done")
+        pbar.close()
+    except ImportError:
+        gen = SyntheticDataGenerator(config)
+        gen.generate()
 
     if output_format == "parquet":
         out = gen.write_parquet(output)
