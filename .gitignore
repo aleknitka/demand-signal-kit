@@ -15,3 +15,4 @@ wheels/
 
 # MiMo planning
 .mimocode/
+data/test/
