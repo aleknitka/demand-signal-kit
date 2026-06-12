@@ -61,10 +61,13 @@ def generate_receipts(
     products: pl.DataFrame,
     promos: pl.DataFrame,
     rng: np.random.Generator,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+    customers: pl.DataFrame | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     stores_dict = stores.to_dicts()
     products_dict = products.to_dicts()
     promos_dict = promos.to_dicts()
+    customers_dict = customers.to_dicts() if customers is not None else []
+    has_customers = len(customers_dict) > 0
 
     n_days = (config.date_end - config.date_start).days + 1
     min_receipts, max_receipts = config.receipts_per_store_per_day
@@ -107,6 +110,15 @@ def generate_receipts(
                 receipt_counter += 1
                 receipt_id = f"R{receipt_counter:08d}"
 
+                customer_id = ""
+                customer_seg = ""
+                loyalty_tier = ""
+                if has_customers:
+                    cust = customers_dict[int(rng.integers(0, len(customers_dict)))]
+                    customer_id = cust["customer_id"]
+                    customer_seg = cust["segment"]
+                    loyalty_tier = cust["loyalty_tier"]
+
                 hour = int(rng.choice(
                     range(24),
                     p=_time_distribution(dow),
@@ -115,6 +127,10 @@ def generate_receipts(
                 trans_time = time(hour, minute)
 
                 n_items = int(rng.integers(1, 13))
+                if has_customers:
+                    from demand_signal_kit.data.synthetic.customers import get_segment_basket_size
+                    n_items = get_segment_basket_size(cust, rng)
+
                 selected_indices = rng.choice(
                     len(products_dict),
                     size=n_items,
@@ -129,6 +145,11 @@ def generate_receipts(
 
                 subtotal = 0.0
                 total_discount = 0.0
+
+                loyalty_discount = 0.0
+                if has_customers and loyalty_tier != "none":
+                    from demand_signal_kit.data.synthetic.customers import LOYALTY_TIERS
+                    loyalty_discount = LOYALTY_TIERS[loyalty_tier]["discount_pct"]
 
                 for idx in selected_indices:
                     product = products_dict[idx]
@@ -152,6 +173,8 @@ def generate_receipts(
                             break
 
                     actual_price = max(0.01, price - discount)
+                    if loyalty_discount > 0:
+                        actual_price = max(0.01, actual_price * (1 - loyalty_discount))
                     line_total = round(qty * actual_price, 2)
                     subtotal += line_total
                     total_discount += discount * qty
@@ -176,6 +199,7 @@ def generate_receipts(
                 receipt_rows.append({
                     "receipt_id": receipt_id,
                     "store_id": store["store_id"],
+                    "customer_id": customer_id,
                     "transaction_date": day,
                     "transaction_time": trans_time,
                     "subtotal": round(subtotal, 2),
@@ -187,6 +211,8 @@ def generate_receipts(
                     "day_of_week": dow,
                     "hour_of_day": hour,
                     "basket_size": basket,
+                    "customer_segment": customer_seg,
+                    "loyalty_tier": loyalty_tier,
                 })
 
     receipts_df = pl.DataFrame(receipt_rows).with_columns(

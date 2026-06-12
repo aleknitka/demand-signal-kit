@@ -184,6 +184,9 @@ def generate(stores, products, start_date, end_date, seed, output_format, output
     click.echo(f"  Promos:          {summary['promos']}")
     click.echo(f"  Receipts:        {summary['receipts']:,}")
     click.echo(f"  Receipt items:   {summary['receipt_items']:,}")
+    if "customers" in summary:
+        click.echo(f"  Customers:       {summary['customers']:,}")
+        click.echo(f"  Loyalty enrollment: {summary['loyalty_enrollment']}%")
     click.echo(f"  Date range:      {summary['date_range']}")
     click.echo(f"  Total revenue:   ${summary['total_revenue']:,.2f}")
     click.echo(f"  Avg basket size: {summary['avg_basket_size']} items")
